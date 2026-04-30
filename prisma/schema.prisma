@@ -1,0 +1,61 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  password String
+
+  couponUsages CouponUsage[]
+
+  @@map("users")
+}
+
+enum DiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+model Coupon {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  discountType  DiscountType
+  discountValue Float
+  isActive      Boolean      @default(true)
+
+  rules  CouponRule[]
+  usages CouponUsage[]
+
+  @@map("coupons")
+}
+
+model CouponRule {
+  id       String @id @default(uuid())
+  type     String
+  config   String
+  couponId String
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+
+  @@map("coupon_rules")
+}
+
+model CouponUsage {
+  id       String   @id @default(uuid())
+  couponId String
+  userId   String
+  usedAt   DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([couponId])
+  @@map("coupon_usages")
+}
