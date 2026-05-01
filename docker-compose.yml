@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - '3000:3000'
+    volumes:
+      - sqlite_data:/app/prisma
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
