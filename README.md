@@ -1,98 +1,283 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Coupons System
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Sistema de cupons de desconto com regras dinâmicas e extensíveis, desenvolvido como desafio técnico para a Taller.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Sumário
 
-## Description
+- [Sobre o projeto](#sobre-o-projeto)
+- [Tecnologias](#tecnologias)
+- [Decisões arquiteturais](#decisões-arquiteturais)
+- [Modelagem de dados](#modelagem-de-dados)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Como rodar](#como-rodar)
+- [Endpoints](#endpoints)
+- [Testes](#testes)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Sobre o projeto
 
-```bash
-$ npm install
+API REST para gerenciamento de cupons de desconto com suporte a regras de uso dinâmicas. O sistema permite criar cupons com desconto fixo ou percentual, associar múltiplas regras de validação e aplicá-los no checkout com feedback detalhado em caso de falha.
+
+Regras suportadas:
+
+- **Valor mínimo** — exige que o carrinho atinja um valor mínimo
+- **Expiração** — invalida o cupom após uma data específica
+- **Uso único** — impede que o mesmo usuário utilize o cupom mais de uma vez
+
+---
+
+## Tecnologias
+
+- **NestJS** — framework principal
+- **Prisma** + **SQLite** — ORM e banco de dados
+- **JWT** — autenticação sem dependência de Passport
+- **bcrypt** — hash de senhas
+- **Zod** — validação de variáveis de ambiente
+- **class-validator** — validação de DTOs nas requisições
+- **date-fns** — manipulação de datas
+- **Jest** — testes automatizados
+
+---
+
+## Decisões arquiteturais
+
+### Strategy Pattern para regras de cupom
+
+O principal desafio do sistema é ser extensível: adicionar uma nova regra não deve exigir alteração no código existente.
+
+A solução foi o **Strategy Pattern** — cada regra implementa a mesma interface `CouponRule`:
+
+```typescript
+interface CouponRule {
+  validate(context: ValidationContext): ValidationResult;
+}
 ```
 
-## Compile and run the project
+O `CouponValidationService` orquestra as regras sem saber quais são — ele apenas itera e chama `validate()`. Para adicionar uma nova regra, basta criar a classe e registrá-la no `rule-registry.ts`.
 
-```bash
-# development
-$ npm run start
+### Rule Registry como fonte de verdade
 
-# watch mode
-$ npm run start:dev
+O tipo `RuleType` é derivado automaticamente das chaves do registry:
 
-# production mode
-$ npm run start:prod
+```typescript
+export const ruleRegistry = {
+  MINIMUM_VALUE: MinimumValueRule,
+  EXPIRATION: ExpirationRule,
+  SINGLE_USE: SingleUseRule,
+} as const;
+
+export type RuleType = keyof typeof ruleRegistry;
 ```
 
-## Run tests
+Isso mantém o enum do DTO, a validação e a factory sincronizados com uma única fonte de verdade.
 
-```bash
-# unit tests
-$ npm run test
+### RuleType como string no banco
 
-# e2e tests
-$ npm run test:e2e
+O tipo da regra é armazenado como `String` no banco, não como enum do Prisma. Enums no banco exigiriam uma migration para cada nova regra, quebrando o princípio de extensibilidade. A validação dos tipos válidos fica na camada de aplicação, no `CouponRuleFactory`.
 
-# test coverage
-$ npm run test:cov
+### Interface TypeScript ao invés de classe abstrata
+
+As regras não compartilham nenhum comportamento comum — cada uma implementa `validate()` do zero. Uma interface expressa exatamente o contrato necessário sem carregar o peso de herança.
+
+### Fail-fast na validação
+
+O `CouponValidationService` para na primeira regra que falha e retorna o motivo específico. Isso evita expor múltiplos erros de uma vez e torna o feedback mais direto ao usuário.
+
+### Índice em CouponUsage.couponId
+
+Como a `SingleUseRule` consulta `previousUsages` filtrados por `couponId` a cada validação, foi adicionado um `@@index([couponId])` explícito para garantir performance nessa query.
+
+### Validade no dia de expiração
+
+O cupom é considerado válido no próprio dia de expiração. A verificação usa `isAfter(currentDate, expDate)`, que retorna `false` quando as datas são iguais — ou seja, um cupom com `expDate: 2026-12-31` ainda é válido durante todo o dia 31/12/2026.
+
+### Parsing de datas sem conversão UTC
+
+O JavaScript interpreta strings ISO `"2026-12-31"` como UTC midnight, o que em fusos negativos como UTC-3 (Brasília) resulta em `30/12/2026 21:00` — um dia a menos. O utilitário `parseLocalDate` resolve isso criando a data no fuso local:
+
+```typescript
+export function parseLocalDate(isoDate: string): Date {
+  const datePart = isoDate.split('T')[0];
+  const [year, month, day] = datePart.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
 ```
 
-## Deployment
+Isso também torna a função tolerante a ISO completo (`2026-12-31T00:00:00.000Z`) ou apenas a data (`2026-12-31`).
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Endpoint de criação sem autenticação
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+O `POST /coupons` não exige autenticação — em produção, esse endpoint seria protegido por um guard de perfil admin. Para este desafio, a simplicidade foi priorizada.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+### Validação de ambiente com Zod + EnvService
+
+As variáveis de ambiente são validadas no boot com Zod. O `EnvService` injeta o `ConfigService` do NestJS e expõe um método `get` tipado que retorna tipos inferidos automaticamente:
+
+```typescript
+get<T extends keyof Env>(key: T) {
+  return this.configService.get(key, { infer: true });
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Isso elimina a necessidade de passar `{ infer: true }` em cada chamada ao longo da aplicação.
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## Modelagem de dados
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+![Modelagem de dados](./docs/database-model.png)
 
-## Support
+## Estrutura do projeto
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```
+src/
+  auth/
+    decorators/
+    dto/
+    interfaces/
+    auth.controller.ts
+    auth.guard.ts
+    auth.module.ts
+    auth.service.ts
+  env/
+    env.ts
+    env.service.ts
+    env.module.ts
+  coupons/
+    dto/
+    rules/
+      coupon-rule.interface.ts
+      minimum-value.rule.ts
+      expiration.rule.ts
+      single-use.rule.ts
+      rule-registry.ts
+    coupon-rule.factory.ts
+    coupon-validation.service.ts
+    coupons.service.ts
+    coupons.controller.ts
+    coupons.module.ts
+  prisma/
+    prisma.service.ts
+    prisma.module.ts
+  users/
+    users.service.ts
+    users.module.ts
+  utils/
+    parse-local-date.ts
+```
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Como rodar
 
-## License
+**Pré-requisitos:** Node.js 20+
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+# Instalar dependências
+npm install
+
+# Configurar variáveis de ambiente
+cp .env.example .env
+
+# Rodar migrations
+npx prisma migrate dev
+
+# Iniciar em desenvolvimento
+npm run start:dev
+```
+
+A API sobe em `http://localhost:3000` por padrão.
+
+### Variáveis de ambiente
+
+```env
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="sua_chave_secreta_aqui"
+```
+
+---
+
+## Endpoints
+
+### Autenticação
+
+| Método | Rota           | Descrição     | Auth |
+| ------ | -------------- | ------------- | ---- |
+| POST   | /auth/register | Criar usuário | —    |
+| POST   | /auth/login    | Login         | —    |
+
+### Cupons
+
+| Método | Rota           | Descrição     | Auth |
+| ------ | -------------- | ------------- | ---- |
+| POST   | /coupons       | Criar cupom   | —    |
+| GET    | /coupons       | Listar cupons | —    |
+| POST   | /coupons/apply | Aplicar cupom | JWT  |
+
+> Cupons criados têm `isActive: true` por padrão. Tentar aplicar um cupom inativo retorna `400 Bad Request`.
+
+### Exemplo — criar cupom
+
+```json
+POST /coupons
+{
+  "code": "DESCONTO20",
+  "discountType": "PERCENTAGE",
+  "discountValue": 20,
+  "rules": [
+    { "type": "MINIMUM_VALUE", "config": { "minValue": 100 } },
+    { "type": "EXPIRATION", "config": { "expDate": "2026-12-31" } },
+    { "type": "SINGLE_USE", "config": {} }
+  ]
+}
+```
+
+### Exemplo — aplicar cupom
+
+```json
+POST /coupons/apply
+Authorization: Bearer <token>
+{
+  "code": "DESCONTO20",
+  "cartTotal": 200
+}
+```
+
+```json
+// Resposta
+{
+  "code": "DESCONTO20",
+  "discountType": "PERCENTAGE",
+  "discountValue": 20,
+  "originalTotal": 200,
+  "discount": 40,
+  "finalTotal": 160
+}
+```
+
+---
+
+## Testes
+
+```bash
+# Rodar testes
+npm run test
+
+# Rodar com descrição detalhada
+npm run test -- --verbose
+
+# Cobertura
+npm run test:cov
+```
+
+### Cobertura
+
+| Arquivo                          | O que testa                                      |
+| -------------------------------- | ------------------------------------------------ |
+| `minimum-value.rule.spec.ts`     | Validação de valor mínimo do carrinho            |
+| `expiration.rule.spec.ts`        | Expiração por data, edge case do mesmo dia       |
+| `single-use.rule.spec.ts`        | Uso único por usuário, isolamento entre usuários |
+| `coupon-rule.factory.spec.ts`    | Instanciação correta, erro em tipo desconhecido  |
+| `coupon-validation.service.spec.ts` | Orquestração, fail-fast, múltiplas regras        |
+| `coupons.service.spec.ts`        | CRUD, cálculo de desconto, registro de uso       |
