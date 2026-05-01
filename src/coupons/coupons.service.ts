@@ -74,7 +74,7 @@ export class CouponsService {
       code: coupon.code,
       discountType: coupon.discountType,
       discountValue: coupon.discountValue,
-      origiralTotal: cartTotal,
+      originalTotal: cartTotal,
       discount,
       finalTotal: cartTotal - discount,
     };
