@@ -1,18 +1,19 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci
-COPY . .
 RUN npx prisma generate
+COPY . .
 RUN npm run build
 
 FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci --omit=dev
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
-CMD ["node", "dist/main"]
+CMD ["npx", "prisma", "migrate", "deploy", "&&", "node", "dist/main"]
