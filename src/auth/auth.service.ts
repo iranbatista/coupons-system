@@ -3,6 +3,7 @@ import { UsersService } from 'src/users/users.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { User } from 'src/generated/prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -15,7 +16,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.usersService.create(email, hashedPassword);
 
-    return user;
+    return this.sign(user);
   }
 
   async login(email: string, password: string) {
@@ -25,13 +26,17 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
+    return this.sign(user);
+  }
+
+  private sign(user: User) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
     };
 
     return {
-      access_token: await this.jwtService.signAsync(payload),
+      access_token: this.jwtService.sign(payload),
     };
   }
 }
