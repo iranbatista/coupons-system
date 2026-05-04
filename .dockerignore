@@ -3,5 +3,4 @@ dist
 .env
 *.db
 coverage
-prisma/migrations
 src/generated
