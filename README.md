@@ -5,6 +5,7 @@ Sistema de cupons de desconto com regras dinâmicas e extensíveis, desenvolvido
 ## Sumário
 
 - [Sobre o projeto](#sobre-o-projeto)
+- [Deploy](#deploy)
 - [Tecnologias](#tecnologias)
 - [Decisões arquiteturais](#decisões-arquiteturais)
 - [Modelagem de dados](#modelagem-de-dados)
@@ -24,6 +25,20 @@ Regras suportadas:
 - **Valor mínimo** — exige que o carrinho atinja um valor mínimo
 - **Expiração** — invalida o cupom após uma data específica
 - **Uso único** — impede que o mesmo usuário utilize o cupom mais de uma vez
+
+---
+
+## Deploy
+
+A API está disponível em produção no Railway:
+
+**Base URL:** `https://coupons-system-production.up.railway.app`
+
+Apesar do frontend não fazer parte do desafio, quis criar algo simples para facilitar a navegação pelos endpoints sem depender de ferramentas como Postman ou curl. O micro-frontend está disponível em:
+
+**Frontend:** https://coupons-system-web.vercel.app
+
+Repositório do frontend: https://github.com/iranbatista/coupons-system-web
 
 ---
 
@@ -273,11 +288,11 @@ npm run test:cov
 
 ### Cobertura
 
-| Arquivo                          | O que testa                                      |
-| -------------------------------- | ------------------------------------------------ |
-| `minimum-value.rule.spec.ts`     | Validação de valor mínimo do carrinho            |
-| `expiration.rule.spec.ts`        | Expiração por data, edge case do mesmo dia       |
-| `single-use.rule.spec.ts`        | Uso único por usuário, isolamento entre usuários |
-| `coupon-rule.factory.spec.ts`    | Instanciação correta, erro em tipo desconhecido  |
+| Arquivo                             | O que testa                                      |
+| ----------------------------------- | ------------------------------------------------ |
+| `minimum-value.rule.spec.ts`        | Validação de valor mínimo do carrinho            |
+| `expiration.rule.spec.ts`           | Expiração por data, edge case do mesmo dia       |
+| `single-use.rule.spec.ts`           | Uso único por usuário, isolamento entre usuários |
+| `coupon-rule.factory.spec.ts`       | Instanciação correta, erro em tipo desconhecido  |
 | `coupon-validation.service.spec.ts` | Orquestração, fail-fast, múltiplas regras        |
-| `coupons.service.spec.ts`        | CRUD, cálculo de desconto, registro de uso       |
+| `coupons.service.spec.ts`           | CRUD, cálculo de desconto, registro de uso       |
